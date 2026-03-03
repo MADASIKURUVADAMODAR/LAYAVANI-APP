@@ -1,0 +1,196 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0f1116;
+  color: #eff2f7;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.radio-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 150px;
+}
+
+.radio-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.radio-header p {
+  margin: 8px 0 0;
+  color: #a8b0c2;
+}
+
+.radio-filters {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 20px;
+}
+
+.radio-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.radio-field label {
+  font-size: 0.9rem;
+  color: #cfd6e3;
+}
+
+.radio-field select,
+.radio-field input {
+  width: 100%;
+  border: 1px solid #2c3445;
+  border-radius: 10px;
+  background: #151925;
+  color: #eff2f7;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+}
+
+.radio-search {
+  grid-column: 1 / -1;
+}
+
+.station-results {
+  margin-top: 20px;
+}
+
+.station-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.station-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #2c3445;
+  background: #151925;
+  color: inherit;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.station-item:hover {
+  border-color: #5f85ff;
+}
+
+.station-item-active {
+  border-color: #7ea0ff;
+  background: #1d2740;
+}
+
+.station-title {
+  display: block;
+  font-weight: 600;
+}
+
+.station-line {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.9rem;
+  color: #b6bfd1;
+}
+
+.radio-status {
+  margin: 8px 0 14px;
+  color: #b6bfd1;
+}
+
+.error {
+  color: #ff8a8a;
+}
+
+.load-more-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.load-more-button {
+  border: 1px solid #3f5eb3;
+  border-radius: 10px;
+  background: #2b4893;
+  color: #ffffff;
+  padding: 10px 18px;
+  cursor: pointer;
+}
+
+.load-more-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.global-player {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-top: 1px solid #2c3445;
+  background: #111623;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.global-player-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  gap: 2px;
+}
+
+.global-player-title {
+  font-size: 0.95rem;
+}
+
+.global-player-meta {
+  font-size: 0.82rem;
+  color: #b6bfd1;
+}
+
+.global-player audio {
+  width: min(520px, 100%);
+  max-width: 100%;
+}
+
+.global-player-status {
+  min-width: 52px;
+  text-align: right;
+  font-size: 0.85rem;
+  color: #b6bfd1;
+}
+
+@media (max-width: 760px) {
+  .global-player {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .global-player-status {
+    text-align: left;
+  }
+}
