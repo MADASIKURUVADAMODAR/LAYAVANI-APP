@@ -6,9 +6,11 @@ import { searchMovies, fetchMovieDetails, fetchMovieVideos, fetchMovieProviders,
 import GlobalRadioPlayer from "./GlobalRadioPlayer";
 import MovieDetailsModal from "./components/movies/MovieDetailsModal";
 import MusicHub from "./components/MusicHub";
-import StudentPulse from './components/StudentPulse';
-import AnimeHub from "./components/anime/AnimeHub";
+import StudentPulsePage from "./pages/StudentPulsePage";
+import MusicPage from "./pages/MusicPage";
+import AnimePage from "./pages/AnimePage";
 import TvShowsHub from "./components/tv/TvShowsHub";
+import RadioPage from "./pages/RadioPage";
 import useActivityTracker from "./hooks/useActivityTracker";
 import SmartImage from "./components/ui/SmartImage";
 import { MediaCardSkeleton } from "./components/ui/Skeletons";
@@ -29,19 +31,17 @@ const cleanSearchQuery = (query) =>
     .trim();
 
 export function getLocalDateKey(date = new Date()) {
-  const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return "";
-
-  const local = new Date(
-    d.getFullYear(),
-    d.getMonth(),
-    d.getDate()
-  );
-
-  const year = local.getFullYear();
-  const month = String(local.getMonth() + 1).padStart(2, "0");
-  const day = String(local.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) return "";
+    // Use local JS date methods - most reliable for timezone
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  } catch {
+    return "";
+  }
 }
 
 const toWikiUrl = (name) => `https://en.wikipedia.org/wiki/${encodeURIComponent((name || "").trim().replace(/\s+/g, "_"))}`;
@@ -221,6 +221,14 @@ function App() {
 }
 
 function Dashboard({ user, onLogout, onLogin }) {
+  const [appTheme, setAppTheme] = useState(() => {
+    return localStorage.getItem("layavani_theme") || "Dark";
+  });
+
+  useEffect(() => {
+    // Apply theme to the root app div via state
+  }, [appTheme]);
+
   const [activeTab, setActiveTab] = useState("Home");
   const [searchTerm, setSearchTerm] = useState("");
   const [videos, setVideos] = useState([]);
@@ -268,6 +276,7 @@ function Dashboard({ user, onLogout, onLogin }) {
   const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [watchlistPop, setWatchlistPop] = useState(false);
+  const [radioSelectedIndex, setRadioSelectedIndex] = useState(-1);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const categoryScrollRefs = useRef({});
@@ -284,8 +293,15 @@ function Dashboard({ user, onLogout, onLogin }) {
     isTrailerPlaying,
   });
 
-  const primaryNavTabs = ["Home", "Movies", "TV Shows", "Anime", "Radio", "Watchlist"];
-  const moreNavTabs = ["Music Hub", "Student Pulse"];
+  const primaryNavTabs = useMemo(
+    () => ["Movies" ,"Home",  "TV Shows", "Anime", "Music", "Radio", "Watchlist"],
+    []
+  );
+  const moreNavTabs = useMemo(() => ["Student Pulse", "Music Hub"], []);
+  const allNavTabs = useMemo(
+    () => [...new Set([...primaryNavTabs, ...moreNavTabs])],
+    [primaryNavTabs, moreNavTabs]
+  );
   const fallbackRadioIcon =
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320' viewBox='0 0 320 320'%3E%3Crect width='320' height='320' rx='36' fill='%23151c2a'/%3E%3Cpath d='M100 212a60 60 0 0 1 120 0' stroke='%23ffffff' stroke-width='18' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='160' cy='212' r='16' fill='%23ffffff'/%3E%3C/svg%3E";
 
@@ -399,6 +415,22 @@ function Dashboard({ user, onLogout, onLogin }) {
     setMobileMenuOpen(false);
     setMoreMenuOpen(false);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (radioSelectedIndex < 0 || radioSelectedIndex >= radioStations.length) return;
+    const station = radioStations[radioSelectedIndex];
+    if (!station) return;
+    setCurrentStation(station);
+    setMiniPlayerOpen(true);
+    setIsRadioPlaying(true);
+  }, [radioSelectedIndex, radioStations]);
+
+  const handleTabSelect = (tabName) => {
+    if (!allNavTabs.includes(tabName)) return;
+    setActiveTab(tabName);
+    setMobileMenuOpen(false);
+    setMoreMenuOpen(false);
+  };
 
   const radioCategories = useMemo(() => {
     const popularMix = filteredStations.slice(0, 18);
@@ -608,69 +640,8 @@ function Dashboard({ user, onLogout, onLogin }) {
   };
 
   useEffect(() => {
-    let isMounted = true;
-
-    const loadInitialFeed = async () => {
-      const defaultKeywords = [
-        "New Music 2026",
-        "Coding Tutorials",
-        "Gaming Highlights",
-        "Bangalore Events"
-      ];
-
-      setLoading(true);
-      setYoutubeError("");
-      const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-
-      try {
-        const requests = defaultKeywords.map((keyword) =>
-          fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(keyword)}&type=video&maxResults=6&key=${apiKey}`)
-            .then(async (res) => {
-              const payload = await res.json();
-              if (!res.ok) {
-                if (res.status === 403) {
-                  throw new Error("YOUTUBE_QUOTA_EXCEEDED");
-                }
-                throw new Error(payload?.error?.message || `YouTube request failed with status ${res.status}`);
-              }
-              return payload;
-            })
-        );
-
-        const responses = await Promise.all(requests);
-        const mixedItems = responses
-          .flatMap((response) => response?.items || [])
-          .filter((item, index, allItems) => {
-            const videoId = item?.id?.videoId;
-            if (!videoId) return false;
-            return allItems.findIndex((candidate) => candidate?.id?.videoId === videoId) === index;
-          })
-          .slice(0, 24);
-
-        if (!isMounted) return;
-        setVideos(mixedItems);
-        if (mixedItems.length > 0) setActiveVideo(mixedItems[0]);
-      } catch (error) {
-        if (isMounted) {
-          if (error?.message === "YOUTUBE_QUOTA_EXCEEDED") {
-            setYoutubeError("YouTube quota exceeded. Please try again tomorrow.");
-          } else {
-            setYoutubeError("Unable to load YouTube videos right now.");
-          }
-          setVideos([]);
-          setActiveVideo(null);
-        }
-        console.error("Initial feed load failed", error);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    loadInitialFeed();
-
-    return () => {
-      isMounted = false;
-    };
+    setVideos([]);
+    setActiveVideo(null);
   }, []);
 
   const openStation = (station) => {
@@ -861,15 +832,17 @@ function Dashboard({ user, onLogout, onLogin }) {
       style={{
         minHeight: "100vh",
         width: "100%",
-        color: "#fff",
+        color: appTheme === "Light" ? "#0a0a0f" : "#fff",
         overflowX: "hidden",
-        backgroundColor: "#06070b",
-        backgroundImage:
-          "linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)",
+        backgroundColor: appTheme === "Light" ? "#f0f0f5" : "#06070b",
+        backgroundImage: appTheme === "Light"
+          ? "linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px)"
+          : "linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)",
         backgroundSize: "26px 26px"
       }}
     >
       <header
+        className="app-navbar"
         style={{
           position: "sticky",
           top: 0,
@@ -880,44 +853,50 @@ function Dashboard({ user, onLogout, onLogin }) {
           width: "100%",
           maxWidth: "100%",
           gap: "16px",
+          flexWrap: "wrap",
           padding: "16px 26px",
           boxSizing: "border-box",
-          borderBottom: "1px solid rgba(255,255,255,0.09)",
-          background: isHeaderScrolled ? "rgba(5,6,10,0.94)" : "rgba(5,6,10,0.82)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          background: appTheme === "Light"
+            ? (isHeaderScrolled ? "rgba(240,240,245,0.97)" : "rgba(240,240,245,0.93)")
+            : (isHeaderScrolled ? "rgba(10,10,15,0.97)" : "rgba(10,10,15,0.93)"),
+          color: appTheme === "Light" ? "#0a0a0f" : "#fff",
           backdropFilter: isHeaderScrolled ? "blur(14px)" : "blur(9px)",
+          overflow: "visible",
           transition: "background 180ms ease-out, backdrop-filter 180ms ease-out"
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: "1 1 auto" }}>
           <button
             type="button"
-            className="ui-pressable ui-focus-ring mobile-nav-toggle"
+            className="ui-pressable ui-focus-ring mobile-nav-toggle app-hamburger"
             aria-label="Toggle navigation menu"
             onClick={() => setMobileMenuOpen((previous) => !previous)}
-            style={{ border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.04)", color: "#fff", borderRadius: "10px", width: "36px", height: "36px", placeItems: "center", fontSize: "1rem" }}
+            style={{ border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.04)", color: "#fff", borderRadius: "10px", width: "36px", height: "36px", placeItems: "center", fontSize: "1rem", textDecoration: "none" }}
           >
             ☰
           </button>
 
-          <div style={{ fontSize: "1.2rem", fontWeight: 800, letterSpacing: "0.06em", whiteSpace: "nowrap" }}>LAYAVANI</div>
+          <div className="app-logo" style={{ fontSize: "1.24rem", fontWeight: 800, letterSpacing: "0.08em", whiteSpace: "nowrap", color: "#fff", textDecoration: "none" }}>LAYAVANI</div>
 
-          <div className="primary-nav-group" style={{ display: "flex", alignItems: "center", gap: "4px", overflowX: "auto", minWidth: 0 }}>
+          <div className="primary-nav-group" style={{ display: "flex", alignItems: "center", gap: "8px", overflowX: "auto", minWidth: 0 }}>
             {primaryNavTabs.map((item) => (
               <button
                 key={item}
                 type="button"
-                onClick={() => setActiveTab(item)}
-                className={`ui-nav-item ui-pressable ui-focus-ring ${activeTab === item ? "is-active" : ""}`}
+                onClick={() => handleTabSelect(item)}
+                className={`app-nav-link ui-pressable ui-focus-ring ${activeTab === item ? "is-active" : ""}`}
                 aria-label={`Open ${item}`}
                 style={{
-                  border: "none",
-                  background: activeTab === item ? "#ffffff" : "transparent",
-                  color: activeTab === item ? "#04060b" : "rgba(255,255,255,0.82)",
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  background: activeTab === item ? "rgba(255,255,255,0.2)" : "transparent",
+                  color: activeTab === item ? "#ffffff" : "rgba(255,255,255,0.85)",
                   borderRadius: "999px",
-                  padding: "9px 13px",
-                  fontWeight: 600,
+                  padding: "8px 12px",
+                  fontWeight: activeTab === item ? 700 : 600,
                   whiteSpace: "nowrap",
-                  cursor: "pointer"
+                  cursor: "pointer",
+                  textDecoration: "none"
                 }}
               >
                 {item}
@@ -927,18 +906,19 @@ function Dashboard({ user, onLogout, onLogin }) {
             <div ref={moreMenuRef} style={{ position: "relative" }}>
               <button
                 type="button"
-                className={`ui-nav-item ui-pressable ui-focus-ring ${moreNavTabs.includes(activeTab) ? "is-active" : ""}`}
+                className={`app-nav-link ui-pressable ui-focus-ring ${moreNavTabs.includes(activeTab) ? "is-active" : ""}`}
                 onClick={() => setMoreMenuOpen((previous) => !previous)}
                 aria-label="Open more sections"
                 style={{
-                  border: "none",
-                  background: moreNavTabs.includes(activeTab) ? "#ffffff" : "transparent",
-                  color: moreNavTabs.includes(activeTab) ? "#04060b" : "rgba(255,255,255,0.82)",
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  background: moreNavTabs.includes(activeTab) ? "rgba(255,255,255,0.2)" : "transparent",
+                  color: moreNavTabs.includes(activeTab) ? "#ffffff" : "rgba(255,255,255,0.85)",
                   borderRadius: "999px",
-                  padding: "9px 13px",
-                  fontWeight: 600,
+                  padding: "8px 12px",
+                  fontWeight: moreNavTabs.includes(activeTab) ? 700 : 600,
                   whiteSpace: "nowrap",
-                  cursor: "pointer"
+                  cursor: "pointer",
+                  textDecoration: "none"
                 }}
               >
                 More ▾
@@ -950,7 +930,7 @@ function Dashboard({ user, onLogout, onLogin }) {
                     <button
                       key={item}
                       type="button"
-                      onClick={() => setActiveTab(item)}
+                      onClick={() => handleTabSelect(item)}
                       className="ui-pressable ui-focus-ring"
                       style={{ width: "100%", textAlign: "left", border: "none", borderRadius: "8px", background: activeTab === item ? "rgba(255,255,255,0.16)" : "transparent", color: "#fff", padding: "9px 10px", cursor: "pointer", fontWeight: 600 }}
                     >
@@ -963,10 +943,11 @@ function Dashboard({ user, onLogout, onLogin }) {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", flex: "1 1 420px", minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", flex: "1 1 320px", minWidth: 0, marginLeft: "auto" }}>
           {activeTab === "Movies" ? (
-            <form onSubmit={movieHandleSearchSubmit} style={{ display: "flex", flex: "1 1 0", maxWidth: "460px", minWidth: 0 }}>
+            <form onSubmit={movieHandleSearchSubmit} style={{ display: "flex", flex: "1 1 0", maxWidth: "380px", minWidth: 0 }}>
               <input
+                className="app-search-input"
                 value={movieQuery}
                 onChange={(event) => setMovieQuery(event.target.value)}
                 placeholder="Search movies..."
@@ -976,31 +957,34 @@ function Dashboard({ user, onLogout, onLogin }) {
                   borderRadius: "14px 0 0 14px",
                   border: "1px solid rgba(255,255,255,0.25)",
                   borderRight: "none",
-                  background: "rgba(255,255,255,0.06)",
+                  background: "rgba(255,255,255,0.08)",
                   color: "#fff",
-                  outline: "none"
+                  outline: "none",
+                  textDecoration: "none"
                 }}
               />
               <button
                 type="submit"
-                className="ui-pressable ui-focus-ring"
+                className="ui-pressable ui-focus-ring app-search-button"
                 aria-label="Search movies"
                 style={{
                   border: "1px solid rgba(255,255,255,0.25)",
                   borderRadius: "0 14px 14px 0",
-                  background: "#ffffff",
-                  color: "#000",
+                  background: "rgba(255,255,255,0.16)",
+                  color: "#fff",
                   padding: "0 16px",
                   fontWeight: 700,
-                  cursor: "pointer"
+                  cursor: "pointer",
+                  textDecoration: "none"
                 }}
               >
                 {movieLoading ? "..." : "Search"}
               </button>
             </form>
           ) : (
-            <form onSubmit={handleSearch} style={{ display: "flex", flex: "1 1 0", maxWidth: "460px", minWidth: 0 }}>
+            <form onSubmit={handleSearch} style={{ display: "flex", flex: "1 1 0", maxWidth: "380px", minWidth: 0 }}>
               <input
+                className="app-search-input"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search songs and videos..."
@@ -1010,37 +994,51 @@ function Dashboard({ user, onLogout, onLogin }) {
                   borderRadius: "14px 0 0 14px",
                   border: "1px solid rgba(255,255,255,0.25)",
                   borderRight: "none",
-                  background: "rgba(255,255,255,0.06)",
+                  background: "rgba(255,255,255,0.08)",
                   color: "#fff",
-                  outline: "none"
+                  outline: "none",
+                  textDecoration: "none"
                 }}
               />
               <button
                 type="submit"
-                className="ui-pressable ui-focus-ring"
+                className="ui-pressable ui-focus-ring app-search-button"
                 aria-label="Search songs and videos"
                 style={{
                   border: "1px solid rgba(255,255,255,0.25)",
                   borderRadius: "0 14px 14px 0",
-                  background: "#ffffff",
-                  color: "#000",
+                  background: "rgba(255,255,255,0.16)",
+                  color: "#fff",
                   padding: "0 16px",
                   fontWeight: 700,
-                  cursor: "pointer"
+                  cursor: "pointer",
+                  textDecoration: "none"
                 }}
               >
                 {loading ? "..." : "Search"}
               </button>
             </form>
           )}
-          <ProfileMenu user={user} userData={userData} onLogout={onLogout} onLogin={onLogin} />
+          <ProfileMenu
+            user={user}
+            userData={userData}
+            onLogout={onLogout}
+            onLogin={onLogin}
+            onThemeChange={(theme) => {
+              setAppTheme(theme === "System"
+                ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "Dark" : "Light")
+                : theme
+              );
+              localStorage.setItem("layavani_theme", theme);
+            }}
+          />
         </div>
       </header>
 
       {mobileMenuOpen ? (
         <div className="ui-dropdown-enter mobile-nav-drawer" style={{ position: "sticky", top: 64, zIndex: 1199, margin: "0 12px", border: "1px solid rgba(255,255,255,0.16)", borderTop: "none", borderRadius: "0 0 14px 14px", background: "rgba(6,8,12,0.96)", backdropFilter: "blur(12px)", padding: "8px" }}>
-          {[...primaryNavTabs, ...moreNavTabs].map((item) => (
-            <button key={item} type="button" onClick={() => setActiveTab(item)} className="ui-pressable ui-focus-ring" style={{ width: "100%", textAlign: "left", border: "none", borderRadius: "10px", background: activeTab === item ? "rgba(255,255,255,0.18)" : "transparent", color: "#fff", padding: "10px 12px", cursor: "pointer", fontWeight: 600 }}>
+          {allNavTabs.map((item) => (
+            <button key={item} type="button" onClick={() => handleTabSelect(item)} className="ui-pressable ui-focus-ring" style={{ width: "100%", textAlign: "left", border: "none", borderRadius: "10px", background: activeTab === item ? "rgba(255,255,255,0.18)" : "transparent", color: "#fff", padding: "10px 12px", cursor: "pointer", fontWeight: 600 }}>
               {item}
             </button>
           ))}
@@ -1049,61 +1047,12 @@ function Dashboard({ user, onLogout, onLogin }) {
 
       <main style={{ padding: "24px 26px 140px", overflowX: "hidden" }}>
         {activeTab === "Radio" ? (
-          <section>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "16px" }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: "1.9rem" }}>Live Radio</h2>
-                <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,0.72)" }}>Poster-style stations with cinematic browsing.</p>
-              </div>
-              <button type="button" onClick={() => loadRadioStations({ reset: true })} style={{ border: "1px solid rgba(255,255,255,0.25)", borderRadius: "14px", background: "rgba(255,255,255,0.06)", color: "#fff", padding: "9px 14px", cursor: "pointer" }}>
-                Refresh
-              </button>
-            </div>
-
-            <form onSubmit={handleRadioSearch} style={{ display: "flex", gap: "10px", marginBottom: "16px", maxWidth: "620px" }}>
-              <input value={radioSearchInput} onChange={(event) => setRadioSearchInput(event.target.value)} placeholder="Search radio stations by name..." style={{ flex: 1, borderRadius: "12px", border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", color: "#fff", padding: "11px 14px", outline: "none" }} />
-              <button type="submit" style={{ border: "1px solid rgba(255,255,255,0.28)", borderRadius: "12px", background: "rgba(255,255,255,0.14)", color: "#fff", padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>
-                {radioSearching ? "Searching..." : "Search"}
-              </button>
-            </form>
-
-            <div style={{ marginBottom: "16px", maxWidth: "660px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <select value={radioCountryFilter} onChange={(event) => setRadioCountryFilter(event.target.value)} style={{ width: "100%", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", color: "#fff", padding: "10px 12px", outline: "none" }}>
-                <option value="ALL_COUNTRIES" style={{ color: "#111" }}>All Countries</option>
-                {radioCountries.map((country) => <option key={country} value={country} style={{ color: "#111" }}>{country}</option>)}
-              </select>
-              <select value={radioLanguageFilter} onChange={(event) => setRadioLanguageFilter(event.target.value)} style={{ width: "100%", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", color: "#fff", padding: "10px 12px", outline: "none" }}>
-                <option value="ALL_LANGUAGES" style={{ color: "#111" }}>All Languages</option>
-                {radioLanguages.map((language) => <option key={language} value={language} style={{ color: "#111" }}>{language}</option>)}
-              </select>
-            </div>
-
-            {radioError ? <p style={{ color: "#ffb1b1", margin: "0 0 14px" }}>{radioError}</p> : null}
-            {!radioError && (radioLoading || radioSearching) && filteredStations.length === 0 ? <p style={{ color: "rgba(255,255,255,0.75)" }}>{radioSearching ? "Searching stations..." : "Loading stations..."}</p> : null}
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "14px", marginBottom: "26px" }}>
-              {filteredStations.slice(0, 12).map((station) => <div key={station.stationuuid} style={{ width: "100%" }}>{renderStationCard(station, "100%")}</div>)}
-            </div>
-
-            {radioCategories.map((category) => (
-              <section key={category.key} style={{ marginBottom: "28px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", gap: "12px" }}>
-                  <h3 style={{ margin: 0, fontSize: "1.18rem" }}>{category.title}</h3>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <button type="button" onClick={() => scrollCategory(category.key, -1)} style={{ border: "1px solid rgba(255,255,255,0.26)", borderRadius: "12px", background: "rgba(255,255,255,0.08)", color: "#fff", padding: "6px 10px", cursor: "pointer" }}>←</button>
-                    <button type="button" onClick={() => scrollCategory(category.key, 1)} style={{ border: "1px solid rgba(255,255,255,0.26)", borderRadius: "12px", background: "rgba(255,255,255,0.08)", color: "#fff", padding: "6px 10px", cursor: "pointer" }}>→</button>
-                    <button type="button" onClick={() => loadRadioStations({ reset: false })} disabled={!radioHasMore || radioLoading} style={{ border: "none", background: "transparent", color: radioHasMore ? "#8ab4ff" : "rgba(255,255,255,0.45)", cursor: radioHasMore ? "pointer" : "not-allowed", textDecoration: "underline", fontWeight: 600 }}>
-                      {radioLoading ? "Loading..." : "View More"}
-                    </button>
-                  </div>
-                </div>
-
-                <div ref={(node) => { categoryScrollRefs.current[category.key] = node; }} style={{ display: "grid", gridAutoFlow: "column", gridAutoColumns: "210px", gap: "12px", overflowX: "auto", paddingBottom: "4px", scrollbarWidth: "none" }}>
-                  {category.stations.map((station) => renderStationCard(station))}
-                </div>
-              </section>
-            ))}
-          </section>
+          <RadioPage
+            stations={radioStations}
+            onStationsChange={setRadioStations}
+            currentIndex={radioSelectedIndex}
+            onSelectIndex={setRadioSelectedIndex}
+          />
         ) : activeTab === "Movies" ? (
           <section style={{ minWidth: 0 }}>
             {movieLoading ? <div style={{ marginBottom: "16px", color: "rgba(255,255,255,0.78)" }}>Loading movies...</div> : null}
@@ -1240,11 +1189,13 @@ function Dashboard({ user, onLogout, onLogin }) {
         ) : activeTab === "TV Shows" ? (
           <TvShowsHub />
         ) : activeTab === "Anime" ? (
-          <AnimeHub />
+          <AnimePage />
+        ) : activeTab === "Music" ? (
+          <MusicPage user={user} />
         ) : activeTab === "Music Hub" ? (
           <MusicHub />
         ) : activeTab === "Student Pulse" ? (
-          <StudentPulse />
+          <StudentPulsePage />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: activeTab === "Radio" ? "minmax(0, 1fr)" : "minmax(0, 1fr) 380px", gap: "22px" }}>
             <section style={{ minWidth: 0 }}>
@@ -1403,10 +1354,14 @@ function Dashboard({ user, onLogout, onLogin }) {
   );
 }
 
-export function ProfileMenu({ user, userData, onLogout, onLogin }) {
+export function ProfileMenu({ user, userData, onLogout, onLogin, onThemeChange }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [region, setRegion] = useState("United States of America");
-  const [themeMode, setThemeMode] = useState("Dark");
+  const [region, setRegion] = useState(() => {
+    return localStorage.getItem("layavani_region") || "India";
+  });
+  const [themeMode, setThemeMode] = useState(() => {
+    return localStorage.getItem("layavani_theme") || "Dark";
+  });
   const [profileUserData, setProfileUserData] = useState(null);
   const menuRef = useRef(null);
 
@@ -1490,11 +1445,13 @@ export function ProfileMenu({ user, userData, onLogout, onLogin }) {
           position: "absolute",
           top: "calc(100% + 10px)",
           right: 0,
-          width: "min(350px, calc(100vw - 24px))",
-          background: "rgba(10,10,15,0.95)",
+          width: "min(340px, calc(100vw - 24px))",
+          maxHeight: "80vh",
+          overflowY: "auto",
+          background: "rgba(10,10,15,0.98)",
           border: "1px solid rgba(255,255,255,0.18)",
           borderRadius: "16px",
-          boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
+          boxShadow: "0 18px 40px rgba(0,0,0,0.6)",
           backdropFilter: "blur(14px)",
           padding: "14px",
           opacity: isOpen ? 1 : 0,
@@ -1502,8 +1459,9 @@ export function ProfileMenu({ user, userData, onLogout, onLogin }) {
           transformOrigin: "top right",
           pointerEvents: isOpen ? "auto" : "none",
           transition: "opacity 220ms ease, transform 220ms ease",
-          zIndex: 2500,
-          boxSizing: "border-box"
+          zIndex: 9999,
+          boxSizing: "border-box",
+          scrollbarWidth: "none"
         }}
       >
         <div style={{ marginBottom: "14px" }}>
@@ -1573,7 +1531,11 @@ export function ProfileMenu({ user, userData, onLogout, onLogin }) {
           <div style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.66)", marginBottom: "8px", letterSpacing: "0.05em", textTransform: "uppercase" }}>Region</div>
           <select
             value={region}
-            onChange={(event) => setRegion(event.target.value)}
+            onChange={(event) => {
+              const newRegion = event.target.value;
+              setRegion(newRegion);
+              localStorage.setItem("layavani_region", newRegion);
+            }}
             style={{
               width: "100%",
               borderRadius: "12px",
@@ -1598,7 +1560,11 @@ export function ProfileMenu({ user, userData, onLogout, onLogin }) {
               <button
                 key={option}
                 type="button"
-                onClick={() => setThemeMode(option)}
+                onClick={() => {
+                  setThemeMode(option);
+                  localStorage.setItem("layavani_theme", option);
+                  if (onThemeChange) onThemeChange(option);
+                }}
                 style={{
                   border: "1px solid rgba(255,255,255,0.22)",
                   borderRadius: "12px",
@@ -1629,7 +1595,9 @@ export function ActivityHeatmap({ activityLog = [] }) {
     safeLog.forEach((entry) => {
       const key = getLocalDateKey(entry?.date);
       if (!key) return;
-      map.set(key, Number(entry?.minutes) || 0);
+      // SUM minutes for same day instead of overwriting
+      const existing = map.get(key) || 0;
+      map.set(key, existing + (Number(entry?.minutes) || 0));
     });
     return map;
   }, [safeLog]);
@@ -1639,6 +1607,12 @@ export function ActivityHeatmap({ activityLog = [] }) {
   const heatmapDays = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    // todayKey must be computed from today at midnight local time
+    const localTodayKey = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0")
+    ].join("-");
 
     const dayCells = [];
 
@@ -1650,11 +1624,16 @@ export function ActivityHeatmap({ activityLog = [] }) {
       const dayKey = getLocalDateKey(dateObject);
       const minutes = activityMap.get(dayKey) || 0;
       const isActive = activityMap.has(dayKey);
-      const isToday = dayKey === todayKey;
+      const isToday = dayKey === localTodayKey;
 
+      // Intensity based on minutes - like GitHub heatmap
       let bg = "#111827";
-      if (isActive) bg = "#16a34a";
-      if (isToday && isActive) bg = "#22c55e";
+      if (isToday && !isActive) bg = "#1e2a1e"; // today outline even if no activity
+      if (minutes > 0 && minutes < 15) bg = "#166534";
+      if (minutes >= 15 && minutes < 30) bg = "#16a34a";
+      if (minutes >= 30 && minutes < 60) bg = "#22c55e";
+      if (minutes >= 60) bg = "#4ade80";
+      if (isToday && isActive) bg = "#86efac"; // brightest for today+active
 
       dayCells.push({
         key: dayKey,
@@ -1664,24 +1643,13 @@ export function ActivityHeatmap({ activityLog = [] }) {
           day: "numeric"
         }),
         minutes,
-        color: bg
+        color: bg,
+        isToday
       });
     }
 
     return dayCells;
   }, [activityMap, todayKey]);
-
-  if (!safeLog.length) {
-    return (
-      <div style={{
-        color: "rgba(255,255,255,0.55)",
-        fontSize: "0.85rem",
-        padding: "10px"
-      }}>
-        No listening activity yet.
-      </div>
-    );
-  }
 
   return (
     <div
@@ -1693,18 +1661,20 @@ export function ActivityHeatmap({ activityLog = [] }) {
         background: "rgba(10,12,18,0.75)",
         padding: "12px",
         boxSizing: "border-box",
-        overflowX: "hidden",
-        position: "relative"
+        overflowX: "auto",
+        overflowY: "hidden",
+        position: "relative",
+        scrollbarWidth: "none"
       }}
     >
       <div
         style={{
           display: "grid",
           gridAutoFlow: "column",
-          gridTemplateRows: "repeat(7, 12px)",
-          gridAutoColumns: "12px",
-          gap: "3px",
-          width: "100%"
+          gridTemplateRows: "repeat(7, 8px)",
+          gridAutoColumns: "8px",
+          gap: "2px",
+          width: "max-content"
         }}
       >
         {heatmapDays.map((dayItem) => (
@@ -1734,10 +1704,12 @@ export function ActivityHeatmap({ activityLog = [] }) {
               setHoveredKey("");
             }}
             style={{
-              width: "12px",
-              height: "12px",
+              width: "8px",
+              height: "8px",
               borderRadius: "3px",
               background: dayItem.color,
+              outline: dayItem.isToday ? "1px solid rgba(255,255,255,0.4)" : "none",
+              outlineOffset: "1px",
               transform: hoveredKey === dayItem.key ? "scale(1.14)" : "scale(1)",
               boxShadow: hoveredKey === dayItem.key ? "0 0 0 1px rgba(255,255,255,0.35), 0 6px 14px rgba(0,0,0,0.35)" : "none",
               filter: hoveredKey === dayItem.key ? "brightness(1.12)" : "brightness(1)",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React , { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   searchStations,
   searchStationsByName,
@@ -120,51 +120,64 @@ export default function RadioPage({ stations, onStationsChange, currentIndex, on
   return (
     <main className="radio-page">
       <header className="radio-header">
-        <h1>Global Radio</h1>
-        <p>Find quality live stations by country, language, or name.</p>
+        <div>
+          <h1 className="radio-title-main">Live Radio</h1>
+          <p className="radio-subtitle">
+            Poster-style stations with cinematic browsing.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="radio-refresh-btn"
+          onClick={() => loadStations({ reset: true })}
+        >
+          Refresh
+        </button>
       </header>
 
       <section className="radio-filters">
-        <div className="radio-field">
-          <label htmlFor="country-select">Country</label>
-          <select
-            id="country-select"
-            value={countryCode}
-            onChange={(e) => setCountryCode(e.target.value)}
-          >
-            <option value="ALL">All Countries</option>
-            {countries.map((c) => (
-              <option key={c.iso_3166_1} value={c.iso_3166_1.toUpperCase()}>
-                {c.name} ({c.stationcount})
-              </option>
-            ))}
-          </select>
-        </div>
+        <div className="radio-search-section">
+          <div className="radio-search-row">
+            <input
+              id="name-search"
+              className="radio-search-input"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search by station name"
+            />
+            <button type="button" className="radio-search-button">Search</button>
+          </div>
 
-        <div className="radio-field">
-          <label htmlFor="language-select">Language</label>
-          <select
-            id="language-select"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-          >
-            <option value="ALL">All Languages</option>
-            {languages.map((l) => (
-              <option key={l.name} value={l.name}>
-                {l.name} ({l.stationcount})
-              </option>
-            ))}
-          </select>
-        </div>
+          <div className="radio-filter-row">
+            <select
+              id="country-select"
+              className="radio-dropdown"
+              value={countryCode}
+              onChange={(e) => setCountryCode(e.target.value)}
+            >
+              <option value="ALL">All Countries</option>
+              {countries.map((c) => (
+                <option key={c.iso_3166_1} value={c.iso_3166_1.toUpperCase()}>
+                  {c.name} ({c.stationcount})
+                </option>
+              ))}
+            </select>
 
-        <div className="radio-field radio-search">
-          <label htmlFor="name-search">Search Stations</label>
-          <input
-            id="name-search"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search by station name"
-          />
+            <select
+              id="language-select"
+              className="radio-dropdown"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+            >
+              <option value="ALL">All Languages</option>
+              {languages.map((l) => (
+                <option key={l.name} value={l.name}>
+                  {l.name} ({l.stationcount})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </section>
 
@@ -177,41 +190,55 @@ export default function RadioPage({ stations, onStationsChange, currentIndex, on
           <p className="radio-status">No stations found.</p>
         ) : null}
 
-        <ul className="station-list">
+        <div className="radio-grid">
           {stations.map((station, index) => {
             const isActive = selectedUuid === station.stationuuid;
+
             return (
-              <li key={station.stationuuid}>
-                <button
-                  type="button"
-                  className={`station-item ${isActive ? "station-item-active" : ""}`}
-                  onClick={() => onSelectIndex(index)}
-                >
-                  <span className="station-title">{station.name}</span>
-                  <span className="station-line">
-                    {getFlagFromCode(station.countrycode)} {station.country || "Unknown country"}
+              <div
+                key={station.stationuuid}
+                className={`radio-card ${isActive ? "radio-card-active" : ""}`}
+                onClick={() => onSelectIndex(index)}
+              >
+                <div className="radio-card-image">
+                  <img
+                    src={
+                      station.favicon ||
+                      "https://cdn-icons-png.flaticon.com/512/727/727245.png"
+                    }
+                    alt={station.name}
+                    loading="lazy"
+                  />
+                </div>
+
+                <div className="radio-card-info">
+                  <h3 className="radio-title">{station.name}</h3>
+
+                  <p className="radio-meta">
+                    {getFlagFromCode(station.countrycode)} {station.country || "Unknown"} • {station.language || "Unknown language"}
+                  </p>
+
+                  <span className="radio-tags">
+                    {station.tags || "No tags"}
                   </span>
-                  <span className="station-line">
-                    {station.language || "Unknown language"}
-                  </span>
-                </button>
-              </li>
+                </div>
+              </div>
             );
           })}
-        </ul>
+        </div>
 
-        {hasMore && !searchName && countryCode === "ALL" && language === "ALL" ? (
-          <div className="load-more-wrap">
+        <div className="radio-pagination">
+          {hasMore && (
             <button
               type="button"
-              onClick={() => loadStations({ reset: false })}
+              className="radio-load-more"
+              onClick={() => loadStations({ reset:false })}
               disabled={isLoading}
-              className="load-more-button"
             >
-              {isLoading ? "Loading..." : "Load More"}
+              {isLoading ? "Loading..." : "Load More Stations"}
             </button>
-          </div>
-        ) : null}
+          )}
+        </div>
       </section>
     </main>
   );

@@ -1,5 +1,14 @@
 import { useEffect, useRef } from "react";
 
+const getLocalDateString = () => {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+};
+
 export default function useActivityTracker(userId, signals = {}) {
   const { isRadioPlaying = false, isYouTubePlaying = false, isTrailerPlaying = false } = signals;
   const intervalRef = useRef(null);
@@ -48,7 +57,7 @@ export default function useActivityTracker(userId, signals = {}) {
         await fetch("http://localhost:5000/api/users/activity", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, minutes: 1 }),
+          body: JSON.stringify({ userId, minutes: 1, localDate: getLocalDateString() }),
         });
         console.log("[ActivityTracker] +1 minute sent");
       } catch {

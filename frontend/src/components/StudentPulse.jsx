@@ -241,7 +241,7 @@ function StudentPulse() {
   const tickerText = useMemo(() => `${tickerItems.join("   ✦   ")}   ✦   ${tickerItems.join("   ✦   ")}`, []);
 
   return (
-    <section style={{ minWidth: 0, position: "relative", paddingBottom: "84px" }}>
+    <section className="student-pulse" style={{ minWidth: 0, position: "relative", paddingBottom: "84px" }}>
       <style>
         {`@keyframes pulse-glow { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
           @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}
@@ -329,6 +329,7 @@ function StudentPulse() {
       </div>
 
       <div
+        className="ticker-bar"
         style={{
           position: "fixed",
           left: 0,
@@ -338,7 +339,7 @@ function StudentPulse() {
           background: "rgba(8,11,18,0.94)",
           height: "42px",
           overflow: "hidden",
-          zIndex: 1100
+          zIndex: 2000
         }}
       >
         <div

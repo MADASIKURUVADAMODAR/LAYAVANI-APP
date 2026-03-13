@@ -8,6 +8,7 @@ const compression = require("compression");
 const morgan = require("morgan");
 const axios = require("axios");
 const radioRouter = require("./routes/radio");
+const User = require("./models/User");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -32,6 +33,10 @@ app.use(
 
 app.use(express.json());
 app.use("/api/radio", radioRouter);
+const musicRouter = require("./routes/music");
+app.use("/api/music", musicRouter);
+const aiDjRouter = require("./routes/ai-dj");
+app.use("/api/ai-dj", aiDjRouter);
 
 /* ========================
    RADIO SERVER POOL
@@ -68,50 +73,6 @@ async function fetchFromRadioBrowser(path) {
 
   throw new Error("All radio servers failed");
 }
-
-/* ========================
-   USER MODEL (🔥 NEW)
-======================== */
-
-const userSchema = new mongoose.Schema(
-  {
-    userId: { type: String, required: true, unique: true },
-    name: String,
-    email: String,
-    photoURL: String,
-
-    // 🔥 streak system
-    lastActiveDate: Date,
-    lastStreakUpdateDate: Date,
-    currentStreak: { type: Number, default: 0 },
-    longestStreak: { type: Number, default: 0 },
-    totalActiveDays: { type: Number, default: 0 },
-
-    // 🔥 listening analytics
-    totalListeningMinutes: { type: Number, default: 0 },
-
-    // 🔥 heatmap data
-    activityLog: [
-      {
-        date: { type: Date, required: true },
-        minutes: { type: Number, default: 0 },
-      },
-    ],
-
-    movieEvents: [
-      {
-        type: { type: String },
-        movieId: { type: Number },
-        timestamp: { type: Date, default: Date.now },
-      },
-    ],
-
-    lastLogin: Date,
-  },
-  { timestamps: true }
-);
-
-const User = mongoose.model("User", userSchema);
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -238,7 +199,7 @@ app.get("/api/users/:userId", async (req, res) => {
 ======================== */
 
 app.post("/api/users/activity", async (req, res) => {
-  const { userId, type, movieId, timestamp } = req.body;
+  const { userId, type, movieId, timestamp, localDate } = req.body;
 
   if (type) {
     if (!userId) {
@@ -302,7 +263,9 @@ app.post("/api/users/activity", async (req, res) => {
 
   try {
     const now = new Date();
-    const today = normalizeToDay(now);
+    const fallbackActivityDate = timestamp ? new Date(timestamp) : new Date(Date.now());
+    const activityDate = localDate ? new Date(localDate) : fallbackActivityDate;
+    const today = normalizeToDay(activityDate);
     const todayKey = getLocalDateKey(today);
 
     await User.updateOne(
@@ -320,7 +283,7 @@ app.post("/api/users/activity", async (req, res) => {
       { upsert: true }
     );
 
-    const startOfDay = normalizeToDay(now);
+    const startOfDay = normalizeToDay(today);
     const endOfDay = new Date(startOfDay.getTime() + MS_PER_DAY);
 
     const bumpToday = await User.updateOne(
